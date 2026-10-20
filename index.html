@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Smart Posture AI - Real-Time Ergonomic System</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- MediaPipe CDN scripts: Zero build errors, runs directly in browser -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Plus Jakarta Sans', sans-serif; }
+    .glass-panel {
+      background: rgba(15, 23, 42, 0.75);
+      backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen">
+
+  <!-- Navbar -->
+  <header class="border-b border-slate-800/80 bg-slate-900/40 backdrop-blur sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <span class="text-2xl">🧘‍♂️</span>
+        <div>
+          <h1 class="text-xl font-bold bg-gradient-to-r from-sky-400 via-indigo-400 to-purple-400 bg-clip-text text-transparent">
+            Smart Posture AI
+          </h1>
+          <p class="text-xs text-slate-400">Client-Side Edge Computer Vision • 60 FPS Zero Latency</p>
+        </div>
+      </div>
+      <div id="statusBadge" class="px-3 py-1 rounded-full text-xs font-semibold bg-slate-800 text-slate-400 border border-slate-700">
+        ⚪ Standby
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="max-w-7xl mx-auto px-6 py-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
+    
+    <!-- Left Column: Video Feed & Controls -->
+    <div class="lg:col-span-2 space-y-4">
+      <div class="relative rounded-2xl overflow-hidden border border-slate-800 bg-slate-900 shadow-2xl aspect-[4/3] flex items-center justify-center">
+        <!-- Hidden video element, rendered via Canvas -->
+        <video id="webcam" class="hidden" playsinline></video>
+        <canvas id="output_canvas" class="w-full h-full object-cover transform -scale-x-100"></canvas>
+        
+        <!-- Camera Start Overlay -->
+        <div id="startOverlay" class="absolute inset-0 bg-slate-950/80 flex flex-col items-center justify-center p-6 text-center space-y-4">
+          <div class="w-16 h-16 rounded-full bg-indigo-500/10 flex items-center justify-center border border-indigo-500/20 text-3xl">
+            📷
+          </div>
+          <div>
+            <h3 class="text-lg font-bold text-slate-100">Camera Access Required</h3>
+            <p class="text-sm text-slate-400 max-w-sm mt-1">
+              All video processing runs locally on your browser GPU. No video is ever sent to a server.
+            </p>
+          </div>
+          <button id="toggleCameraBtn" class="px-6 py-2.5 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 font-semibold text-white shadow-lg shadow-indigo-500/25 hover:opacity-95 transition">
+            Start Live Posture Monitor
+          </button>
+        </div>
+      </div>
+
+      <!-- Tips -->
+      <div class="glass-panel p-4 rounded-xl text-xs text-slate-400 flex items-center space-x-3">
+        <span class="text-lg">💡</span>
+        <span>Position yourself 2–3 feet from the webcam so your head, shoulders, and chest are visible.</span>
+      </div>
+    </div>
+
+    <!-- Right Column: Real-Time Analytics & Thresholds -->
+    <div class="space-y-6">
+      
+      <!-- Ergonomic Score Card -->
+      <div class="glass-panel p-6 rounded-2xl shadow-xl space-y-4">
+        <div class="flex justify-between items-center">
+          <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Ergonomic Score</span>
+          <span id="scoreText" class="text-2xl font-bold text-sky-400">100%</span>
+        </div>
+        <div class="w-full bg-slate-800 rounded-full h-2.5 overflow-hidden">
+          <div id="scoreBar" class="bg-gradient-to-r from-emerald-500 to-sky-400 h-2.5 rounded-full transition-all duration-300" style="width: 100%"></div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3 pt-2">
+          <div class="p-3 bg-slate-900/60 rounded-xl border border-slate-800">
+            <div class="text-[11px] text-slate-400 uppercase">Good Frames</div>
+            <div id="goodCount" class="text-xl font-bold text-emerald-400 mt-1">0</div>
+          </div>
+          <div class="p-3 bg-slate-900/60 rounded-xl border border-slate-800">
+            <div class="text-[11px] text-slate-400 uppercase">Alert Frames</div>
+            <div id="badCount" class="text-xl font-bold text-rose-400 mt-1">0</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Real-Time Joint Telemetry Angles -->
+      <div class="glass-panel p-6 rounded-2xl shadow-xl space-y-4">
+        <h3 class="text-sm font-semibold text-slate-300 uppercase tracking-wider">Live Angular Telemetry</h3>
+        
+        <div class="space-y-3 text-sm">
+          <div class="flex justify-between items-center p-2.5 bg-slate-900/50 rounded-lg">
+            <span class="text-slate-400">Shoulder Roll Tilt:</span>
+            <span id="shoulderAngleVal" class="font-mono font-semibold text-slate-200">0.0°</span>
+          </div>
+          <div class="flex justify-between items-center p-2.5 bg-slate-900/50 rounded-lg">
+            <span class="text-slate-400">Spine Inclination:</span>
+            <span id="spineAngleVal" class="font-mono font-semibold text-slate-200">0.0°</span>
+          </div>
+          <div class="flex justify-between items-center p-2.5 bg-slate-900/50 rounded-lg">
+            <span class="text-slate-400">Forward Neck Tilt:</span>
+            <span id="neckAngleVal" class="font-mono font-semibold text-slate-200">0.0°</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Interactive Sensitivity Sliders -->
+      <div class="glass-panel p-6 rounded-2xl shadow-xl space-y-4">
+        <h3 class="text-sm font-semibold text-slate-300 uppercase tracking-wider">Threshold Settings</h3>
+        
+        <div class="space-y-3">
+          <div>
+            <div class="flex justify-between text-xs text-slate-400 mb-1">
+              <span>Shoulder Tilt Limit</span>
+              <span id="shoulderTolLabel">12°</span>
+            </div>
+            <input id="shoulderTol" type="range" min="5" max="25" value="12" class="w-full accent-indigo-500">
+          </div>
+
+          <div>
+            <div class="flex justify-between text-xs text-slate-400 mb-1">
+              <span>Spine Deviation Limit</span>
+              <span id="spineTolLabel">15°</span>
+            </div>
+            <input id="spineTol" type="range" min="5" max="30" value="15" class="w-full accent-indigo-500">
+          </div>
+
+          <div>
+            <div class="flex justify-between text-xs text-slate-400 mb-1">
+              <span>Neck Angle Limit</span>
+              <span id="neckTolLabel">18°</span>
+            </div>
+            <input id="neckTol" type="range" min="5" max="35" value="18" class="w-full accent-indigo-500">
+          </div>
+        </div>
+
+        <button id="resetStatsBtn" class="w-full mt-2 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300 transition">
+          Reset Telemetry Session
+        </button>
+      </div>
+
+    </div>
+  </main>
+
+  <script>
+    const videoElement = document.getElementById('webcam');
+    const canvasElement = document.getElementById('output_canvas');
+    const canvasCtx = canvasElement.getContext('2d');
+    const startOverlay = document.getElementById('startOverlay');
+    const toggleCameraBtn = document.getElementById('toggleCameraBtn');
+    const statusBadge = document.getElementById('statusBadge');
+
+    const scoreText = document.getElementById('scoreText');
+    const scoreBar = document.getElementById('scoreBar');
+    const goodCountElem = document.getElementById('goodCount');
+    const badCountElem = document.getElementById('badCount');
+
+    const shoulderAngleVal = document.getElementById('shoulderAngleVal');
+    const spineAngleVal = document.getElementById('spineAngleVal');
+    const neckAngleVal = document.getElementById('neckAngleVal');
+
+    const shoulderTol = document.getElementById('shoulderTol');
+    const spineTol = document.getElementById('spineTol');
+    const neckTol = document.getElementById('neckTol');
+
+    let goodFrames = 0;
+    let badFrames = 0;
+    let camera = null;
+    let isRunning = false;
+
+    // Audio chime generator using Web Audio API (No mp3 files required)
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    let lastAlertSoundTime = 0;
+
+    function playBeep() {
+      const now = Date.now();
+      if (now - lastAlertSoundTime < 4000) return; // Cooldown
+      lastAlertSoundTime = now;
+
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(440, audioCtx.currentTime); // 440 Hz
+      gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.3);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.3);
+    }
+
+    // Mathematical Angle Helpers
+    function getAngleWithVertical(p1, p2) {
+      const dx = p1.x - p2.x;
+      const dy = p1.y - p2.y;
+      return Math.abs((Math.atan2(dx, dy) * 180) / Math.PI);
+    }
+
+    function getShoulderRoll(left, right) {
+      const dx = right.x - left.x;
+      const dy = right.y - left.y;
+      return Math.abs((Math.atan2(dy, dx) * 180) / Math.PI);
+    }
+
+    function onResults(results) {
+      canvasElement.width = videoElement.videoWidth;
+      canvasElement.height = videoElement.videoHeight;
+      const width = canvasElement.width;
+      const height = canvasElement.height;
+
+      canvasCtx.save();
+      canvasCtx.clearRect(0, 0, width, height);
+      canvasCtx.drawImage(results.image, 0, 0, width, height);
+
+      if (results.poseLandmarks) {
+        const lm = results.poseLandmarks;
+        const leftShoulder = lm[11];
+        const rightShoulder = lm[12];
+        const leftHip = lm[23];
+        const rightHip = lm[24];
+        const nose = lm[0];
+
+        const shoulderMid = { x: (leftShoulder.x + rightShoulder.x) / 2, y: (leftShoulder.y + rightShoulder.y) / 2 };
+        const hipMid = { x: (leftHip.x + rightHip.x) / 2, y: (leftHip.y + rightHip.y) / 2 };
+
+        const shoulderRoll = getShoulderRoll(leftShoulder, rightShoulder);
+        const spineAngle = getAngleWithVertical(shoulderMid, hipMid);
+        const neckAngle = getAngleWithVertical(nose, shoulderMid);
+
+        shoulderAngleVal.innerText = `${shoulderRoll.toFixed(1)}°`;
+        spineAngleVal.innerText = `${spineAngle.toFixed(1)}°`;
+        neckAngleVal.innerText = `${neckAngle.toFixed(1)}°`;
+
+        const isBad = (shoulderRoll > parseFloat(shoulderTol.value)) ||
+                      (spineAngle > parseFloat(spineTol.value)) ||
+                      (neckAngle > parseFloat(neckTol.value));
+
+        if (isBad) {
+          badFrames++;
+          statusBadge.className = "px-3 py-1 rounded-full text-xs font-semibold bg-rose-500/20 text-rose-400 border border-rose-500/30";
+          statusBadge.innerText = "🚨 Posture Alert: Slouching";
+          playBeep();
+        } else {
+          goodFrames++;
+          statusBadge.className = "px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30";
+          statusBadge.innerText = "✅ Good Posture";
+        }
+
+        // Draw Skeleton Lines with Custom HUD
+        const color = isBad ? '#ef4444' : '#10b981';
+        drawConnectors(canvasCtx, results.poseLandmarks, POSE_CONNECTIONS, { color: color, lineWidth: 3 });
+        drawLandmarks(canvasCtx, [leftShoulder, rightShoulder, leftHip, rightHip, nose], { color: '#ffffff', fillColor: color, lineWidth: 2, radius: 6 });
+
+        // Update Stats
+        goodCountElem.innerText = goodFrames;
+        badCountElem.innerText = badFrames;
+        const total = goodFrames + badFrames;
+        const pct = total > 0 ? Math.round((goodFrames / total) * 100) : 100;
+        scoreText.innerText = `${pct}%`;
+        scoreBar.style.width = `${pct}%`;
+      }
+
+      canvasCtx.restore();
+    }
+
+    // Initialize MediaPipe Pose
+    const pose = new Pose({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
+    });
+
+    pose.setOptions({
+      modelComplexity: 1,
+      smoothLandmarks: true,
+      minDetectionConfidence: 0.5,
+      minTrackingConfidence: 0.5
+    });
+    pose.onResults(onResults);
+
+    toggleCameraBtn.addEventListener('click', async () => {
+      startOverlay.classList.add('hidden');
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+      camera = new Camera(videoElement, {
+        onFrame: async () => {
+          await pose.send({ image: videoElement });
+        },
+        width: 640,
+        height: 480
+      });
+      camera.start();
+    });
+
+    // Reset button
+    document.getElementById('resetStatsBtn').addEventListener('click', () => {
+      goodFrames = 0;
+      badFrames = 0;
+      goodCountElem.innerText = "0";
+      badCountElem.innerText = "0";
+      scoreText.innerText = "100%";
+      scoreBar.style.width = "100%";
+    });
+
+    // Sliders dynamic display
+    shoulderTol.oninput = (e) => document.getElementById('shoulderTolLabel').innerText = `${e.target.value}°`;
+    spineTol.oninput = (e) => document.getElementById('spineTolLabel').innerText = `${e.target.value}°`;
+    neckTol.oninput = (e) => document.getElementById('neckTolLabel').innerText = `${e.target.value}°`;
+  </script>
+</body>
+</html>
